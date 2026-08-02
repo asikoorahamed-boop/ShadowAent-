@@ -9,6 +9,7 @@
         NEXT_TELEMETRY_DISABLED: "1"
         LC_ALL: "en_US.UTF-8"
         LANG: "en_US.UTF-8"
+        NODE_OPTIONS: "--max-old-space-size=4096"
     scripts:
       - name: Set up Environment & Node
         script: |
@@ -22,21 +23,19 @@
           if [ -d "ShadowAgent" ]; then
             mv ShadowAgent/* .
           fi
-      - name: Install Dependencies & Fix Next.js Version
+      - name: Install Clean Dependencies
         script: |
           cd extracted_app
+          # Completely purge old modules/caches before clean install
+          rm -rf node_modules package-lock.json .next out
           npm install --legacy-peer-deps
-          
-          # Force install stable Next.js 14 to fix getRSCModuleInformation bug
-          echo "Pinning Next.js to stable 14.2.15..."
-          npm install next@14.2.15 react@18.3.1 react-dom@18.3.1 --legacy-peer-deps --save-exact
       - name: Fix Code Issues & Build Static Export
         script: |
           cd extracted_app
           
           # 1. Fix UTF-8 encoding & comment out 'use server'
           export LC_ALL=C
-          find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/'\''use server'\''/\/\/ '\''use server'\''/g' {} + || true
+          find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/'\use server'\''/\/\/ '\''use server'\''/g' {} + || true
           find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/"use server"/\/\/ "use server"/g' {} + || true
 
           # 2. Fix calendar.tsx TypeScript Error
@@ -46,19 +45,20 @@
           fi
 
           # 3. Create Valid Next.js Static Export Config
-          cat << 'EOF' > next.config.js
+          cat << 'EOF' > next.config.mjs
           /** @type {import('next').NextConfig} */
           const nextConfig = {
             output: 'export',
             images: { unoptimized: true },
             typescript: { ignoreBuildErrors: true },
-            eslint: { ignoreDuringBuilds: true }
+            eslint: { ignoreDuringBuilds: true },
+            swcMinify: false
           };
-          module.exports = nextConfig;
+          export default nextConfig;
           EOF
 
-          # 4. Clean cache and run export
-          rm -rf .next out next.config.mjs
+          # 4. Run Next Build with clean cache
+          rm -rf .next out
           npx next build
       - name: Capacitor Android Sync
         script: |
