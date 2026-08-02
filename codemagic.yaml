@@ -22,10 +22,14 @@ workflows:
           if [ -d "ShadowAgent" ]; then
             mv ShadowAgent/* .
           fi
-      - name: Install Dependencies
+      - name: Install Dependencies & Patch Next.js Core Bug
         script: |
           cd extracted_app
           npm install --legacy-peer-deps
+          
+          # Force update to the latest stable Next.js & React to permanently fix getRSCModuleInformation bug
+          echo "Updating Next.js and React to latest stable versions..."
+          npm install next@latest react@latest react-dom@latest --legacy-peer-deps
       - name: Fix Config & Build Next.js Export
         script: |
           cd extracted_app
@@ -33,26 +37,21 @@ workflows:
           # Fix encoding issue and comment out 'use server'
           export LC_ALL=C
           find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/'\''use server'\''/\/\/ '\''use server'\''/g' {} + || true
+          find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/"use server"/\/\/ "use server"/g' {} + || true
 
-          # Create static export config bypassing RSC bundling issues
-          cat << 'EOF' > next.config.js
+          # Create a clean, standard static export config
+          cat << 'EOF' > next.config.mjs
           /** @type {import('next').NextConfig} */
           const nextConfig = {
             output: 'export',
             images: { unoptimized: true },
             typescript: { ignoreBuildErrors: true },
-            eslint: { ignoreDuringBuilds: true },
-            compiler: {
-              removeConsole: false,
-            },
-            experimental: {
-              esmExternals: 'loose',
-            },
+            eslint: { ignoreDuringBuilds: true }
           };
-          module.exports = nextConfig;
+          export default nextConfig;
           EOF
 
-          # Clean previous next build artifacts and build
+          # Clean previous buggy cache and run export
           rm -rf .next out
           npx next build
       - name: Capacitor Android Sync
