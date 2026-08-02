@@ -24,17 +24,15 @@ workflows:
         script: |
           cd extracted_app
           npm install --legacy-peer-deps
-      - name: Fix TS Error and Build Next.js Export
+      - name: Disable Server Actions & Build Static Export
         script: |
           cd extracted_app
           
-          # Fix calendar.tsx TypeScript Error automatically
-          if [ -f "src/components/ui/calendar.tsx" ]; then
-            sed -i '' 's/IconLeft:/ \/\/ IconLeft:/g' src/components/ui/calendar.tsx || true
-            sed -i '' 's/IconRight:/ \/\/ IconRight:/g' src/components/ui/calendar.tsx || true
-          fi
-          
-          # Force Ignore TypeScript Errors in next.config
+          # Comment out 'use server' directives automatically to allow static export
+          grep -rl "'use server'" . | xargs sed -i '' 's/'\''use server'\''/\/\/ '\''use server'\''/g' || true
+          grep -rl '"use server"' . | xargs sed -i '' 's/"use server"/\/\/ "use server"/g' || true
+
+          # Create static export config
           cat << 'EOF' > next.config.mjs
           /** @type {import('next').NextConfig} */
           const nextConfig = {
@@ -42,6 +40,9 @@ workflows:
             images: { unoptimized: true },
             typescript: { ignoreBuildErrors: true },
             eslint: { ignoreDuringBuilds: true },
+            experimental: {
+              serverActions: false,
+            },
           };
           export default nextConfig;
           EOF
