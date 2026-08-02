@@ -1,4 +1,4 @@
-workflows:
+ workflows:
   extract-and-build-apk:
     name: Extract ZIP and Build Android APK
     max_build_duration: 60
@@ -22,15 +22,19 @@ workflows:
           if [ -d "ShadowAgent" ]; then
             mv ShadowAgent/* .
           fi
-      - name: Install Dependencies
+      - name: Install Dependencies & Fix Next.js Version
         script: |
           cd extracted_app
           npm install --legacy-peer-deps
+          
+          # Force install stable Next.js 14 to fix getRSCModuleInformation bug
+          echo "Pinning Next.js to stable 14.2.15..."
+          npm install next@14.2.15 react@18.3.1 react-dom@18.3.1 --legacy-peer-deps --save-exact
       - name: Fix Code Issues & Build Static Export
         script: |
           cd extracted_app
           
-          # 1. Fix UTF-8 encoding & disable 'use server' safely
+          # 1. Fix UTF-8 encoding & comment out 'use server'
           export LC_ALL=C
           find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/'\''use server'\''/\/\/ '\''use server'\''/g' {} + || true
           find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/"use server"/\/\/ "use server"/g' {} + || true
@@ -41,20 +45,21 @@ workflows:
             sed -i '' 's/IconRight:/ \/\/ IconRight:/g' src/components/ui/calendar.tsx || true
           fi
 
-          # 3. Create Valid Next.js Static Export Config (Compatible with Next.js 15 & 16)
-          cat << 'EOF' > next.config.mjs
+          # 3. Create Valid Next.js Static Export Config
+          cat << 'EOF' > next.config.js
           /** @type {import('next').NextConfig} */
           const nextConfig = {
             output: 'export',
             images: { unoptimized: true },
             typescript: { ignoreBuildErrors: true },
+            eslint: { ignoreDuringBuilds: true }
           };
-          export default nextConfig;
+          module.exports = nextConfig;
           EOF
 
-          # 4. Clean old build artifacts and run export without linting
-          rm -rf .next out
-          npx next build --no-lint
+          # 4. Clean cache and run export
+          rm -rf .next out next.config.mjs
+          npx next build
       - name: Capacitor Android Sync
         script: |
           cd extracted_app
