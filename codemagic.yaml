@@ -4,16 +4,14 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m1
     environment:
-      node: 18.x
+      node: 20.x
       java: 17
     scripts:
       - name: Extract ZIP File
         script: |
           echo "Extracting project.zip..."
           unzip -o project.zip -d extracted_app
-          # Check inside extracted folder
           cd extracted_app
-          # Move files to root if nested inside another folder
           if [ -d "ShadowAgent" ]; then
             mv ShadowAgent/* .
           fi
