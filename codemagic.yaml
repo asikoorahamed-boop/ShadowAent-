@@ -30,24 +30,30 @@ workflows:
         script: |
           cd extracted_app
           
-          # Fix encoding issue and disable 'use server' directives safely
+          # Fix encoding issue and comment out 'use server'
           export LC_ALL=C
           find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/'\''use server'\''/\/\/ '\''use server'\''/g' {} + || true
-          find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/"use server"/\/\/ "use server"/g' {} + || true
 
-          # Create valid static export config for Next.js 15
-          cat << 'EOF' > next.config.mjs
+          # Create static export config bypassing RSC bundling issues
+          cat << 'EOF' > next.config.js
           /** @type {import('next').NextConfig} */
           const nextConfig = {
             output: 'export',
             images: { unoptimized: true },
             typescript: { ignoreBuildErrors: true },
             eslint: { ignoreDuringBuilds: true },
+            compiler: {
+              removeConsole: false,
+            },
+            experimental: {
+              esmExternals: 'loose',
+            },
           };
-          export default nextConfig;
+          module.exports = nextConfig;
           EOF
-          
-          # Clean build cache and run export
+
+          # Clean previous next build artifacts and build
+          rm -rf .next out
           npx next build
       - name: Capacitor Android Sync
         script: |
