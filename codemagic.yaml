@@ -23,6 +23,10 @@ workflows:
         script: |
           cd extracted_app
           npm install --legacy-peer-deps
+      - name: Build Next.js Static Export (out folder)
+        script: |
+          cd extracted_app
+          npm run build
       - name: Capacitor Android Sync
         script: |
           cd extracted_app
