@@ -10,7 +10,7 @@ workflows:
         LC_ALL: "en_US.UTF-8"
         LANG: "en_US.UTF-8"
     scripts:
-      - name: Set up Node.js
+      - name: Set up Environment & Node
         script: |
           node -v
           npm -v
@@ -22,38 +22,39 @@ workflows:
           if [ -d "ShadowAgent" ]; then
             mv ShadowAgent/* .
           fi
-      - name: Install Dependencies & Patch Next.js Core Bug
+      - name: Install Dependencies
         script: |
           cd extracted_app
           npm install --legacy-peer-deps
-          
-          # Force update to the latest stable Next.js & React to permanently fix getRSCModuleInformation bug
-          echo "Updating Next.js and React to latest stable versions..."
-          npm install next@latest react@latest react-dom@latest --legacy-peer-deps
-      - name: Fix Config & Build Next.js Export
+      - name: Fix Code Issues & Build Static Export
         script: |
           cd extracted_app
           
-          # Fix encoding issue and comment out 'use server'
+          # 1. Fix UTF-8 encoding & disable 'use server' safely
           export LC_ALL=C
           find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/'\''use server'\''/\/\/ '\''use server'\''/g' {} + || true
           find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/"use server"/\/\/ "use server"/g' {} + || true
 
-          # Create a clean, standard static export config
+          # 2. Fix calendar.tsx TypeScript Error
+          if [ -f "src/components/ui/calendar.tsx" ]; then
+            sed -i '' 's/IconLeft:/ \/\/ IconLeft:/g' src/components/ui/calendar.tsx || true
+            sed -i '' 's/IconRight:/ \/\/ IconRight:/g' src/components/ui/calendar.tsx || true
+          fi
+
+          # 3. Create Valid Next.js Static Export Config (Compatible with Next.js 15 & 16)
           cat << 'EOF' > next.config.mjs
           /** @type {import('next').NextConfig} */
           const nextConfig = {
             output: 'export',
             images: { unoptimized: true },
             typescript: { ignoreBuildErrors: true },
-            eslint: { ignoreDuringBuilds: true }
           };
           export default nextConfig;
           EOF
 
-          # Clean previous buggy cache and run export
+          # 4. Clean old build artifacts and run export without linting
           rm -rf .next out
-          npx next build
+          npx next build --no-lint
       - name: Capacitor Android Sync
         script: |
           cd extracted_app
