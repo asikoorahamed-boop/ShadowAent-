@@ -2,12 +2,15 @@ workflows:
   extract-and-build-apk:
     name: Extract ZIP and Build Android APK
     max_build_duration: 60
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m2
     environment:
-      node: default
-      java: 17
-      android_sdk: 34
+      vars:
+        PACKAGE_NAME: "com.shadowagent.app"
     scripts:
+      - name: Set up Node.js
+        script: |
+          node -v
+          npm -v
       - name: Extract ZIP File
         script: |
           echo "Extracting project.zip..."
