@@ -1,4 +1,4 @@
- workflows:
+workflows:
   extract-and-build-apk:
     name: Extract ZIP and Build Android APK
     max_build_duration: 60
@@ -26,38 +26,58 @@
       - name: Install Clean Dependencies
         script: |
           cd extracted_app
-          # Completely purge old modules/caches before clean install
           rm -rf node_modules package-lock.json .next out
           npm install --legacy-peer-deps
       - name: Fix Code Issues & Build Static Export
         script: |
           cd extracted_app
           
-          # 1. Fix UTF-8 encoding & comment out 'use server'
-          export LC_ALL=C
-          find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/'\use server'\''/\/\/ '\''use server'\''/g' {} + || true
-          find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) -exec sed -i '' 's/"use server"/\/\/ "use server"/g' {} + || true
+          # 1. Clean 'use server' directives safely using Node JS (Cross-platform)
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            function processDir(dir) {
+              const entries = fs.readdirSync(dir, { withFileTypes: true });
+              for (let entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  if (entry.name !== "node_modules" && entry.name !== ".next") processDir(fullPath);
+                } else if (/\.(js|jsx|ts|tsx)$/.test(entry.name)) {
+                  let content = fs.readFileSync(fullPath, "utf8");
+                  if (content.includes("use server")) {
+                    content = content.replace(/["\x27]use server["\x27]/g, "// use server");
+                    fs.writeFileSync(fullPath, content, "utf8");
+                  }
+                }
+              }
+            }
+            processDir(".");
+          '
 
-          # 2. Fix calendar.tsx TypeScript Error
-          if [ -f "src/components/ui/calendar.tsx" ]; then
-            sed -i '' 's/IconLeft:/ \/\/ IconLeft:/g' src/components/ui/calendar.tsx || true
-            sed -i '' 's/IconRight:/ \/\/ IconRight:/g' src/components/ui/calendar.tsx || true
-          fi
+          # 2. Fix calendar.tsx TypeScript Error safely
+          node -e '
+            const fs = require("fs");
+            const file = "src/components/ui/calendar.tsx";
+            if (fs.existsSync(file)) {
+              let c = fs.readFileSync(file, "utf8");
+              c = c.replace(/IconLeft:/g, "// IconLeft:").replace(/IconRight:/g, "// IconRight:");
+              fs.writeFileSync(file, c, "utf8");
+            }
+          '
 
-          # 3. Create Valid Next.js Static Export Config
+          # 3. Create Valid Static Export Config for Next.js 15
           cat << 'EOF' > next.config.mjs
           /** @type {import('next').NextConfig} */
           const nextConfig = {
             output: 'export',
             images: { unoptimized: true },
             typescript: { ignoreBuildErrors: true },
-            eslint: { ignoreDuringBuilds: true },
-            swcMinify: false
+            eslint: { ignoreDuringBuilds: true }
           };
           export default nextConfig;
           EOF
 
-          # 4. Run Next Build with clean cache
+          # 4. Run Clean Static Export
           rm -rf .next out
           npx next build
       - name: Capacitor Android Sync
