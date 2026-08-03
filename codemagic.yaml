@@ -65,7 +65,7 @@ workflows:
             }
           '
 
-          # 3. Create Static Export Config with Built-in Webpack Instance (Fixes 'node:' & Node modules issue)
+          # 3. Create Static Export Config with Complete Node Fallbacks (Includes perf_hooks & all node internals)
           cat << 'EOF' > next.config.mjs
           /** @type {import('next').NextConfig} */
           const nextConfig = {
@@ -77,10 +77,12 @@ workflows:
               if (!isServer) {
                 config.resolve.fallback = {
                   ...config.resolve.fallback,
+                  perf_hooks: false,
                   dns: false, net: false, tls: false, fs: false,
                   child_process: false, async_hooks: false, http2: false,
                   http: false, https: false, crypto: false, stream: false,
                   os: false, zlib: false, path: false, url: false,
+                  v8: false, vm: false, tty: false, readline: false,
                 };
                 config.plugins.push(
                   new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
