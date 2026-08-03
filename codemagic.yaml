@@ -65,8 +65,10 @@ workflows:
             }
           '
 
-          # 3. Create Valid Static Export Config with Complete Node.js Fallbacks
+          # 3. Create Static Export Config Bypassing Node & node: Protocol Scheme Imports
           cat << 'EOF' > next.config.mjs
+          import webpack from 'webpack';
+
           /** @type {import('next').NextConfig} */
           const nextConfig = {
             output: 'export',
@@ -77,22 +79,16 @@ workflows:
               if (!isServer) {
                 config.resolve.fallback = {
                   ...config.resolve.fallback,
-                  dns: false,
-                  net: false,
-                  tls: false,
-                  fs: false,
-                  child_process: false,
-                  async_hooks: false,
-                  http2: false,
-                  http: false,
-                  https: false,
-                  crypto: false,
-                  stream: false,
-                  os: false,
-                  zlib: false,
-                  path: false,
-                  url: false,
+                  dns: false, net: false, tls: false, fs: false,
+                  child_process: false, async_hooks: false, http2: false,
+                  http: false, https: false, crypto: false, stream: false,
+                  os: false, zlib: false, path: false, url: false,
                 };
+                config.plugins.push(
+                  new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+                    resource.request = resource.request.replace(/^node:/, '');
+                  })
+                );
               }
               return config;
             },
