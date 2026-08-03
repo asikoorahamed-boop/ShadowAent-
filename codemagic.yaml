@@ -32,7 +32,7 @@ workflows:
         script: |
           cd extracted_app
           
-          # 1. Clean 'use server' directives safely using Node JS (Cross-platform)
+          # 1. Clean 'use server' directives safely using Node JS
           node -e '
             const fs = require("fs");
             const path = require("path");
@@ -54,7 +54,7 @@ workflows:
             processDir(".");
           '
 
-          # 2. Fix calendar.tsx TypeScript Error safely
+          # 2. Fix calendar.tsx TypeScript Error
           node -e '
             const fs = require("fs");
             const file = "src/components/ui/calendar.tsx";
@@ -65,19 +65,33 @@ workflows:
             }
           '
 
-          # 3. Create Valid Static Export Config for Next.js 15
+          # 3. Create Valid Static Export Config with Webpack Node Fallbacks (Fixes 'dns' & Node modules issue)
           cat << 'EOF' > next.config.mjs
           /** @type {import('next').NextConfig} */
           const nextConfig = {
             output: 'export',
             images: { unoptimized: true },
             typescript: { ignoreBuildErrors: true },
-            eslint: { ignoreDuringBuilds: true }
+            eslint: { ignoreDuringBuilds: true },
+            webpack: (config, { isServer }) => {
+              if (!isServer) {
+                config.resolve.fallback = {
+                  ...config.resolve.fallback,
+                  dns: false,
+                  net: false,
+                  tls: false,
+                  fs: false,
+                  child_process: false,
+                  async_hooks: false,
+                };
+              }
+              return config;
+            },
           };
           export default nextConfig;
           EOF
 
-          # 4. Run Clean Static Export
+          # 4. Clean cache and run export
           rm -rf .next out
           npx next build
       - name: Capacitor Android Sync
