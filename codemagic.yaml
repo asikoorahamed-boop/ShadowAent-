@@ -4,6 +4,7 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
+      java: 21
       vars:
         PACKAGE_NAME: "com.shadowagent.app"
         NEXT_TELEMETRY_DISABLED: "1"
@@ -15,6 +16,7 @@ workflows:
         script: |
           node -v
           npm -v
+          java -version
       - name: Extract ZIP File
         script: |
           echo "Extracting project.zip..."
@@ -65,7 +67,7 @@ workflows:
             }
           '
 
-          # 3. Create Static Export Config with Complete Node Fallbacks (Includes perf_hooks & all node internals)
+          # 3. Create Static Export Config
           cat << 'EOF' > next.config.mjs
           /** @type {import('next').NextConfig} */
           const nextConfig = {
@@ -108,6 +110,6 @@ workflows:
         script: |
           cd extracted_app/android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug -Dorg.gradle.java.home=$JAVA_HOME
     artifacts:
       - extracted_app/android/app/build/outputs/apk/debug/*.apk
