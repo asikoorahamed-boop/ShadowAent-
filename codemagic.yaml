@@ -65,17 +65,15 @@ workflows:
             }
           '
 
-          # 3. Create Static Export Config Bypassing Node & node: Protocol Scheme Imports
+          # 3. Create Static Export Config with Built-in Webpack Instance (Fixes 'node:' & Node modules issue)
           cat << 'EOF' > next.config.mjs
-          import webpack from 'webpack';
-
           /** @type {import('next').NextConfig} */
           const nextConfig = {
             output: 'export',
             images: { unoptimized: true },
             typescript: { ignoreBuildErrors: true },
             eslint: { ignoreDuringBuilds: true },
-            webpack: (config, { isServer }) => {
+            webpack: (config, { isServer, webpack }) => {
               if (!isServer) {
                 config.resolve.fallback = {
                   ...config.resolve.fallback,
