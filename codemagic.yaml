@@ -101,20 +101,26 @@ workflows:
           # 4. Clean cache and run export
           rm -rf .next out
           npx next build
-      - name: Capacitor Android Sync with New Package ID
+      - name: Clean & Re-generate Fresh Android Project
         script: |
           cd extracted_app
-          npx cap add android || true
           
-          # Force update app package ID to avoid internal conflicts
+          # Remove existing hardcoded android folder if present
+          rm -rf android
+          
+          # Force update capacitor config with new unique App ID & App Name
           node -e '
             const fs = require("fs");
-            if (fs.existsSync("capacitor.config.json")) {
-              let cfg = JSON.parse(fs.readFileSync("capacitor.config.json", "utf8"));
-              cfg.appId = "com.shadowagent.v2app";
-              fs.writeFileSync("capacitor.config.json", JSON.stringify(cfg, null, 2));
-            }
+            const cfg = {
+              appId: "com.shadowagent.v2app",
+              appName: "ShadowAgent V2",
+              webDir: "out"
+            };
+            fs.writeFileSync("capacitor.config.json", JSON.stringify(cfg, null, 2));
           '
+          
+          # Add fresh android folder without cached credentials
+          npx cap add android
           npx cap sync android
       - name: Build Signed Debug APK
         script: |
