@@ -104,11 +104,9 @@ workflows:
       - name: Clean & Re-generate Fresh Android Project
         script: |
           cd extracted_app
-          
-          # Remove existing hardcoded android folder if present
           rm -rf android
           
-          # Force update capacitor config with new unique App ID & App Name
+          # Configure App ID and Name
           node -e '
             const fs = require("fs");
             const cfg = {
@@ -119,13 +117,17 @@ workflows:
             fs.writeFileSync("capacitor.config.json", JSON.stringify(cfg, null, 2));
           '
           
-          # Add fresh android folder without cached credentials
           npx cap add android
           npx cap sync android
-      - name: Build Signed Debug APK
+      - name: Generate Key & Build Signed APK
         script: |
           cd extracted_app/android
           chmod +x gradlew
+          
+          # Generate custom signing keystore
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+          
+          # Build APK
           ./gradlew clean assembleDebug -Dorg.gradle.java.home=$JAVA_HOME
     artifacts:
       - extracted_app/android/app/build/outputs/apk/debug/*.apk
