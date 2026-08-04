@@ -1,4 +1,5 @@
-workflows:
+
+     workflows:
   extract-and-build-apk:
     name: Extract ZIP and Build Android APK
     max_build_duration: 60
@@ -6,7 +7,7 @@ workflows:
     environment:
       java: 21
       vars:
-        PACKAGE_NAME: "com.shadowagent.app"
+        PACKAGE_NAME: "com.shadowagent.v2app"
         NEXT_TELEMETRY_DISABLED: "1"
         LC_ALL: "en_US.UTF-8"
         LANG: "en_US.UTF-8"
@@ -101,15 +102,25 @@ workflows:
           # 4. Clean cache and run export
           rm -rf .next out
           npx next build
-      - name: Capacitor Android Sync
+      - name: Capacitor Android Sync with New Package ID
         script: |
           cd extracted_app
           npx cap add android || true
+          
+          # Force update app package ID to avoid internal conflicts
+          node -e '
+            const fs = require("fs");
+            if (fs.existsSync("capacitor.config.json")) {
+              let cfg = JSON.parse(fs.readFileSync("capacitor.config.json", "utf8"));
+              cfg.appId = "com.shadowagent.v2app";
+              fs.writeFileSync("capacitor.config.json", JSON.stringify(cfg, null, 2));
+            }
+          '
           npx cap sync android
-      - name: Build Debug APK
+      - name: Build Signed Debug APK
         script: |
           cd extracted_app/android
           chmod +x gradlew
-          ./gradlew assembleDebug -Dorg.gradle.java.home=$JAVA_HOME
+          ./gradlew clean assembleDebug -Dorg.gradle.java.home=$JAVA_HOME
     artifacts:
       - extracted_app/android/app/build/outputs/apk/debug/*.apk
