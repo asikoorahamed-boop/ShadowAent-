@@ -1,6 +1,6 @@
 workflows:
   extract-and-build-apk:
-    name: Extract ZIP and Build Universal Android APK
+    name: Extract ZIP and Build Fully Signed Universal APK
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
@@ -33,7 +33,7 @@ workflows:
         script: |
           cd extracted_app
           
-          # 1. Clean 'use server' directives safely using Node JS
+          # 1. Clean 'use server' directives
           node -e '
             const fs = require("fs");
             const path = require("path");
@@ -97,50 +97,53 @@ workflows:
           export default nextConfig;
           EOF
 
-          # 4. Clean cache and run export
+          # 4. Export Web Assets
           rm -rf .next out
           npx next build
-      - name: Force Reconfigure Android Manifest & App Identity
+      - name: Configure Fresh Native Android
         script: |
           cd extracted_app
           rm -rf android
           
-          # Force unique config across all files
+          # Force Unique Package Identity & App Name
           node -e '
             const fs = require("fs");
             const cfg = {
-              appId: "com.shadowagent.v3app",
-              appName: "ShadowAgent App",
+              appId: "com.shadowagent.production.app",
+              appName: "ShadowAgent Pro",
               webDir: "out"
             };
             fs.writeFileSync("capacitor.config.json", JSON.stringify(cfg, null, 2));
-            if (fs.existsSync("capacitor.config.ts")) {
-              fs.unlinkSync("capacitor.config.ts");
-            }
+            if (fs.existsSync("capacitor.config.ts")) fs.unlinkSync("capacitor.config.ts");
           '
           
           npx cap add android
           npx cap sync android
           
-          # Force update Android Strings
+          # Inject Required Permissions & App Config into AndroidManifest.xml
           node -e '
             const fs = require("fs");
-            const stringsPath = "android/app/src/main/res/values/strings.xml";
-            if (fs.existsSync(stringsPath)) {
-              let s = fs.readFileSync(stringsPath, "utf8");
-              s = s.replace(/<string name="app_name">.*?<\/string>/, "<string name=\"app_name\">ShadowAgent App<\/string>");
-              fs.writeFileSync(stringsPath, s, "utf8");
+            const manifestPath = "android/app/src/main/AndroidManifest.xml";
+            if (fs.existsSync(manifestPath)) {
+              let m = fs.readFileSync(manifestPath, "utf8");
+              const perms = `
+                <uses-permission android:name="android.permission.INTERNET" />
+                <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              `;
+              m = m.replace("<application", perms + "\n    <application");
+              m = m.replace("android:hardwareAccelerated=\"true\"", "android:hardwareAccelerated=\"true\" android:exported=\"true\"");
+              fs.writeFileSync(manifestPath, m, "utf8");
             }
           '
-      - name: Generate Keystore & Build Release Signed APK
+      - name: Build & Sign Production APK
         script: |
           cd extracted_app/android
           chmod +x gradlew
           
-          # Generate custom keystore inside app/ directory
-          keytool -genkey -v -keystore app/release.keystore -storepass mypassword123 -alias mykeyalias -keypass mypassword123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=ShadowAgent, O=App, C=US" || true
+          # Generate Production Keystore
+          keytool -genkey -v -keystore app/release.keystore -storepass mypassword123 -alias mykeyalias -keypass mypassword123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=ShadowAgent, O=Production, C=US" || true
           
-          # Configure build.gradle to automatically sign the APK
+          # Update Gradle for Signed Release
           node -e '
             const fs = require("fs");
             const gradlePath = "app/build.gradle";
@@ -153,6 +156,8 @@ workflows:
                         storePassword "mypassword123"
                         keyAlias "mykeyalias"
                         keyPassword "mypassword123"
+                        v1SigningEnabled true
+                        v2SigningEnabled true
                     }
                 }
               `;
@@ -162,7 +167,7 @@ workflows:
             }
           '
           
-          # Build signed release APK
+          # Build APK
           ./gradlew clean assembleRelease -Dorg.gradle.java.home=$JAVA_HOME
     artifacts:
       - extracted_app/android/app/build/outputs/apk/release/*.apk
