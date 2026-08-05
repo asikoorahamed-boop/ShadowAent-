@@ -6,7 +6,6 @@ workflows:
     environment:
       java: 21
       vars:
-        PACKAGE_NAME: "com.shadowagent.v2app"
         NEXT_TELEMETRY_DISABLED: "1"
         LC_ALL: "en_US.UTF-8"
         LANG: "en_US.UTF-8"
@@ -101,34 +100,69 @@ workflows:
           # 4. Clean cache and run export
           rm -rf .next out
           npx next build
-      - name: Clean & Re-generate Fresh Android Project
+      - name: Force Reconfigure Android Manifest & App Identity
         script: |
           cd extracted_app
           rm -rf android
           
-          # Configure App ID and Name
+          # Force unique config across all files
           node -e '
             const fs = require("fs");
             const cfg = {
-              appId: "com.shadowagent.v2app",
-              appName: "ShadowAgent V2",
+              appId: "com.shadowagent.v3app",
+              appName: "ShadowAgent App",
               webDir: "out"
             };
             fs.writeFileSync("capacitor.config.json", JSON.stringify(cfg, null, 2));
+            if (fs.existsSync("capacitor.config.ts")) {
+              fs.unlinkSync("capacitor.config.ts");
+            }
           '
           
           npx cap add android
           npx cap sync android
-      - name: Build Universal Signed Debug/Release APK
+          
+          # Force update Android Strings and Manifest App Name
+          node -e '
+            const fs = require("fs");
+            const stringsPath = "android/app/src/main/res/values/strings.xml";
+            if (fs.existsSync(stringsPath)) {
+              let s = fs.readFileSync(stringsPath, "utf8");
+              s = s.replace(/<string name="app_name">.*?<\/string>/, "<string name=\"app_name\">ShadowAgent App<\/string>");
+              fs.writeFileSync(stringsPath, s, "utf8");
+            }
+          '
+      - name: Generate Keystore & Build Release Signed APK
         script: |
           cd extracted_app/android
           chmod +x gradlew
           
-          # Build signed debug & release universal apks
-          ./gradlew clean assembleDebug assembleRelease -Dorg.gradle.java.home=$JAVA_HOME
+          # Generate custom keystore inside android directory
+          keytool -genkey -v -keystore release.keystore -storepass mypassword123 -alias mykeyalias -keypass mypassword123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=ShadowAgent, O=App, C=US" || true
           
-          # Copy APK to root artifact location for easy download
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/ShadowAgent_V2_Universal.apk || true
+          # Configure build.gradle to automatically sign the APK with generated keystore
+          node -e '
+            const fs = require("fs");
+            const gradlePath = "app/build.gradle";
+            if (fs.existsSync(gradlePath)) {
+              let g = fs.readFileSync(gradlePath, "utf8");
+              const signingConfig = `
+                signingConfigs {
+                    release {
+                        storeFile file("release.keystore")
+                        storePassword "mypassword123"
+                        keyAlias "mykeyalias"
+                        keyPassword "mypassword123"
+                    }
+                }
+              `;
+              g = g.replace(/android\s*\{/, "android {\n" + signingConfig);
+              g = g.replace(/buildTypes\s*\{\s*release\s*\{/, "buildTypes {\n        release {\n            signingConfig signingConfigs.release\n");
+              fs.writeFileSync(gradlePath, g, "utf8");
+            }
+          '
+          
+          # Build signed release APK
+          ./gradlew clean assembleRelease -Dorg.gradle.java.home=$JAVA_HOME
     artifacts:
-      - extracted_app/android/app/build/outputs/apk/debug/*.apk
       - extracted_app/android/app/build/outputs/apk/release/*.apk
