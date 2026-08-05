@@ -1,39 +1,41 @@
 workflows:
   extract-and-build-apk:
-    name: Extract ZIP and Build Standalone Universal APK
+    name: Build Flawless Signed Release APK - ShadowNet Pro
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
       java: 21
       vars:
+        PACKAGE_NAME: "com.shadownet.app"
+        APP_NAME: "ShadowNet Pro"
         NEXT_TELEMETRY_DISABLED: "1"
         LC_ALL: "en_US.UTF-8"
         LANG: "en_US.UTF-8"
         NODE_OPTIONS: "--max-old-space-size=4096"
     scripts:
-      - name: Set up Environment & Node
+      - name: Environment Information
         script: |
           node -v
           npm -v
           java -version
-      - name: Extract ZIP File
+      - name: Extract Project ZIP
         script: |
-          echo "Extracting project.zip..."
+          echo "Extracting project ZIP..."
           unzip -o project.zip -d extracted_app
           cd extracted_app
           if [ -d "ShadowAgent" ]; then
             mv ShadowAgent/* .
           fi
-      - name: Install Clean Dependencies
+      - name: Clean Dependencies & Cache
         script: |
           cd extracted_app
-          rm -rf node_modules package-lock.json .next out
+          rm -rf node_modules package-lock.json .next out android
           npm install --legacy-peer-deps
-      - name: Fix Code Issues & Build Static Export
+      - name: Fix Source Code Directives & Static Export
         script: |
           cd extracted_app
           
-          # Clean 'use server' directives
+          # Fix 'use server' directives safely across all files
           node -e '
             const fs = require("fs");
             const path = require("path");
@@ -55,7 +57,7 @@ workflows:
             processDir(".");
           '
 
-          # Fix calendar.tsx TypeScript Error
+          # Fix calendar component UI type check
           node -e '
             const fs = require("fs");
             const file = "src/components/ui/calendar.tsx";
@@ -66,7 +68,7 @@ workflows:
             }
           '
 
-          # Static Export Config
+          # Create Next.js Export Configuration
           cat << 'EOF' > next.config.mjs
           /** @type {import('next').NextConfig} */
           const nextConfig = {
@@ -97,50 +99,81 @@ workflows:
           export default nextConfig;
           EOF
 
+          # Run Next Static Export
           rm -rf .next out
           npx next build
-      - name: Setup Pure Native Android Project
+      - name: Generate Fresh Android Native Shell & Permissions
         script: |
           cd extracted_app
-          rm -rf android
           
-          # Force Original Base Package
+          # Initialize fresh capacitor config with new identity
           node -e '
             const fs = require("fs");
             const cfg = {
-              appId: "com.shadowagent.app",
-              appName: "ShadowAgent",
-              webDir: "out"
+              appId: process.env.PACKAGE_NAME,
+              appName: process.env.APP_NAME,
+              webDir: "out",
+              server: {
+                androidScheme: "https"
+              }
             };
             fs.writeFileSync("capacitor.config.json", JSON.stringify(cfg, null, 2));
             if (fs.existsSync("capacitor.config.ts")) fs.unlinkSync("capacitor.config.ts");
           '
           
+          # Add native Android platform
           npx cap add android
           npx cap sync android
           
-          # Strip Google Services Plugin Dependency if mismatched
+          # Configure AndroidManifest.xml for full compatibility & multi-device use
           node -e '
             const fs = require("fs");
-            const gradlePath = "android/build.gradle";
-            if (fs.existsSync(gradlePath)) {
-              let g = fs.readFileSync(gradlePath, "utf8");
-              g = g.replace(/classpath\s+[\x27"]com\.google\.gms:google-services:.*[\x27"]/g, "// google-services removed");
-              fs.writeFileSync(gradlePath, g, "utf8");
-            }
-            const appGradlePath = "android/app/build.gradle";
-            if (fs.existsSync(appGradlePath)) {
-              let ag = fs.readFileSync(appGradlePath, "utf8");
-              ag = ag.replace(/apply\s+plugin:\s+[\x27"]com\.google\.gms\.google-services[\x27"]/g, "// plugin removed");
-              fs.writeFileSync(appGradlePath, ag, "utf8");
+            const manifestPath = "android/app/src/main/AndroidManifest.xml";
+            if (fs.existsSync(manifestPath)) {
+              let m = fs.readFileSync(manifestPath, "utf8");
+              const perms = `
+                <uses-permission android:name="android.permission.INTERNET" />
+                <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+                <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+              `;
+              m = m.replace("<application", perms + "\n    <application");
+              m = m.replace("android:hardwareAccelerated=\"true\"", "android:hardwareAccelerated=\"true\" android:exported=\"true\"");
+              fs.writeFileSync(manifestPath, m, "utf8");
             }
           '
-      - name: Build Debug Standalone Universal APK
+      - name: Sign & Build Production Release APK
         script: |
           cd extracted_app/android
           chmod +x gradlew
           
-          # Build Clean Debug APK
-          ./gradlew clean assembleDebug -Dorg.gradle.java.home=$JAVA_HOME
+          # Generate Dedicated Production Release Keystore
+          keytool -genkey -v -keystore app/release.keystore -storepass mypassword123 -alias mykeyalias -keypass mypassword123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=ShadowNet, O=Production, C=US" || true
+          
+          # Inject V1 + V2 Signing Certificate into Gradle
+          node -e '
+            const fs = require("fs");
+            const gradlePath = "app/build.gradle";
+            if (fs.existsSync(gradlePath)) {
+              let g = fs.readFileSync(gradlePath, "utf8");
+              const signingConfig = `
+                signingConfigs {
+                    release {
+                        storeFile file("release.keystore")
+                        storePassword "mypassword123"
+                        keyAlias "mykeyalias"
+                        keyPassword "mypassword123"
+                        v1SigningEnabled true
+                        v2SigningEnabled true
+                    }
+                }
+              `;
+              g = g.replace(/android\s*\{/, "android {\n" + signingConfig);
+              g = g.replace(/buildTypes\s*\{\s*release\s*\{/, "buildTypes {\n        release {\n            signingConfig signingConfigs.release\n");
+              fs.writeFileSync(gradlePath, g, "utf8");
+            }
+          '
+          
+          # Build signed APK
+          ./gradlew clean assembleRelease -Dorg.gradle.java.home=$JAVA_HOME
     artifacts:
-      - extracted_app/android/app/build/outputs/apk/debug/*.apk
+      - extracted_app/android/app/build/outputs/apk/release/*.apk
