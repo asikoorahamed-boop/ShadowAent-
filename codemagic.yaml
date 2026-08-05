@@ -1,6 +1,6 @@
 workflows:
   extract-and-build-apk:
-    name: Extract ZIP and Build Android APK
+    name: Extract ZIP and Build Universal Android APK
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
@@ -119,15 +119,16 @@ workflows:
           
           npx cap add android
           npx cap sync android
-      - name: Generate Key & Build Signed APK
+      - name: Build Universal Signed Debug/Release APK
         script: |
           cd extracted_app/android
           chmod +x gradlew
           
-          # Generate custom signing keystore
-          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+          # Build signed debug & release universal apks
+          ./gradlew clean assembleDebug assembleRelease -Dorg.gradle.java.home=$JAVA_HOME
           
-          # Build APK
-          ./gradlew clean assembleDebug -Dorg.gradle.java.home=$JAVA_HOME
+          # Copy APK to root artifact location for easy download
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/ShadowAgent_V2_Universal.apk || true
     artifacts:
       - extracted_app/android/app/build/outputs/apk/debug/*.apk
+      - extracted_app/android/app/build/outputs/apk/release/*.apk
