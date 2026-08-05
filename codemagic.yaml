@@ -122,7 +122,7 @@ workflows:
           npx cap add android
           npx cap sync android
           
-          # Force update Android Strings and Manifest App Name
+          # Force update Android Strings
           node -e '
             const fs = require("fs");
             const stringsPath = "android/app/src/main/res/values/strings.xml";
@@ -137,10 +137,10 @@ workflows:
           cd extracted_app/android
           chmod +x gradlew
           
-          # Generate custom keystore inside android directory
-          keytool -genkey -v -keystore release.keystore -storepass mypassword123 -alias mykeyalias -keypass mypassword123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=ShadowAgent, O=App, C=US" || true
+          # Generate custom keystore inside app/ directory
+          keytool -genkey -v -keystore app/release.keystore -storepass mypassword123 -alias mykeyalias -keypass mypassword123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=ShadowAgent, O=App, C=US" || true
           
-          # Configure build.gradle to automatically sign the APK with generated keystore
+          # Configure build.gradle to automatically sign the APK
           node -e '
             const fs = require("fs");
             const gradlePath = "app/build.gradle";
